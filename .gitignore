@@ -159,3 +159,13 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 .DS_Store/
+Data/
+*.e*
+*.o*
+Output*/
+Demo/
+runs/
+smpl_models/
+checkpoints/
+tools/models/hrnet/config/hrnet/hrnetv2_w40_imagenet_pretrained.pth
+eval_results.csv

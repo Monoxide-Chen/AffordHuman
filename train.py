@@ -14,7 +14,7 @@ from tools.utils.logger import Logger
 
 def main(opt, dict):
     if not os.path.exists(opt.save_checkpoint_path):
-        os.makedirs(opt.save_checkpoint_path)
+        os.makedirs(opt.save_checkpoint_path, exist_ok=True)
 
     if opt.use_gpu and dict['run_type']=='train':
         dist.init_process_group(backend='nccl', init_method='env://')

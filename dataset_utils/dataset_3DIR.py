@@ -9,7 +9,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tools.utils.mesh_sampler import get_sample
-
+from collections import defaultdict
 mesh_sampler = get_sample(device=None)
 
 def img_normalize(img):
@@ -36,13 +36,17 @@ class _3DIR(Dataset):
         self.img_files = self.read_file(img_file)
         self.data_dict = json.load(open(human_file, 'r'))
         # self.behave_dict = json.load(open(behave_file, 'r'))
-
+        self.object_to_images = defaultdict(list)
+        for img_path in self.img_files:
+            object_ = img_path.split('/')[-1].split('_')[0]
+            self.object_to_images[object_].append(img_path)
         if mode == 'train':
-            number_dict = {'Earphone':0, 'Baseballbat':0, 'Tennisracket':0, 'Bag':0, 'Motorcycle':0, 'Guitar':0, 
-                        'Backpack':0, 'Chair':0, 'Knife':0, 'Bicycle':0, 'Umbrella':0, 'Keyboard':0,
-                        'Scissors':0, 'Bottle':0, 'Bowl':0, 'Surfboard':0,  'Mug':0, 'Suitcase':0, 'Vase':0, 
-                        'Skateboard':0, 'Bed':0}
-
+            # number_dict = {'Earphone':0, 'Baseballbat':0, 'Tennisracket':0, 'Bag':0, 'Motorcycle':0, 'Guitar':0, 
+            #             'Backpack':0, 'Chair':0, 'Knife':0, 'Bicycle':0, 'Umbrella':0, 'Keyboard':0,
+            #             'Scissors':0, 'Bottle':0, 'Bowl':0, 'Surfboard':0,  'Mug':0, 'Suitcase':0, 'Vase':0, 
+            #             'Skateboard':0, 'Bed':0}
+            number_dict = {'Earphone':0, 'Bag':0, 'Chair':0, 'Knife':0, 'Keyboard':0, 
+                           'Scissors':0, 'Bottle':0, 'Bowl':0, 'Mug':0, 'Vase':0, 'Bed':0}
             self.obj_files, self.number_dict = self.read_file(obj_file, number_dict=number_dict)
             self.obj_list = list(number_dict.keys())
             self.pts_split = {}
@@ -64,14 +68,17 @@ class _3DIR(Dataset):
         self.Spatial_folder = 'Data/obj_center'
 
     def __len__(self):
-        return len(self.img_files)
+        return len(self.obj_files)
 
     def __getitem__(self, index):
         
         data_info = {}
-        img_path = self.img_files[index]
+        Pts_path = self.obj_files[index]
+        object_ = Pts_path.split('/')[-1].split('_')[0]
+
+        img_path = random.choice(self.object_to_images[object_])
+
         data_type = img_path.split('/')[1]
-        object_ = img_path.split('/')[-1].split('_')[0]
 
         if(data_type != 'Behave'):
             mask_path = img_path.split('/')[0] + '/mask/' + img_path.split('/')[2] + '/' + img_path.split('/')[-1].split('.')[0] + '.png'
@@ -163,9 +170,9 @@ class _3DIR(Dataset):
             affordance_ = []
             Pts_path = []
             affordance_logits = []
-            obj_range = self.pts_split[object_]
+            # obj_range = self.pts_split[object_]
             obj_curvatures = []
-            point_sample_idx = random.sample(range(obj_range[0], obj_range[1]), 1)
+            point_sample_idx = [index]
             for idx in point_sample_idx:
                 point_path = self.obj_files[idx]
                 obj_curvature_path = os.path.join(self.Obj_curvaure_folder, object_, point_path.split('/')[-1].replace('.txt','.pkl'))
@@ -255,4 +262,12 @@ class _3DIR(Dataset):
 
 
 if __name__=='__main__':
-    pass
+    img_file = 'Data/Image/train.txt'
+    obj_file = 'Data/Point/train.txt'
+    human_file = 'Data/SMPLH/train.json'
+    behave_file = 'Data/Behave/train.json'
+    dataset = _3DIR(img_file, obj_file, human_file, behave_file, mode='train')
+    data = dataset[0]
+    for key in data.keys():
+        print(key, data[key].shape)
+    print(len(dataset))

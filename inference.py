@@ -249,7 +249,7 @@ if __name__ == '__main__':
     parser.add_argument('--object', type=str, default='Demo/Backpack_object_demo.txt', help='single test object')
     parser.add_argument('--C_o', type=str, default='Demo/Backpack_curvature.pkl', help='single test object curvature')
     parser.add_argument('--C_h', type=str, default='Demo/Human_curvature.pkl', help='single test object curvature')
-    parser.add_argument('--outdir', type=str, default='Demo/output', help='single test ouput dir')
+    parser.add_argument('--outdir', type=str, default='Demo/output1', help='single test ouput dir')
 
     opt = parser.parse_args()
     dict = read_yaml(opt.yaml)
