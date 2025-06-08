@@ -167,14 +167,14 @@ class Intention_Excavation(nn.Module):
         self.T_h = nn.Parameter(torch.zeros(1, 1, input_dim))
         self.cosine = nn.CosineEmbeddingLoss()
 
-    def forward(self ,F_i, F_o, F_h):
+    def forward(self ,F_o, F_h):
 
-        B = F_i.size(0)
+        B = F_o.size(0)
 
         F_to = torch.cat((self.T_o.expand(B,-1,-1), F_o), dim=1)
-        F_th = torch.cat((self.T_o.expand(B,-1,-1), F_h), dim=1)
+        F_th = torch.cat((self.T_h.expand(B,-1,-1), F_h), dim=1)
 
-        F_to_, F_th_ = self.co_intention(F_to, F_th, F_i)
+        F_to_, F_th_ = F_to, F_th
 
         T_o_, T_h_ =  F_to_[:,0,:], F_th_[:,0,:]
         F_o_, F_h_ = F_to_[:,1:,:], F_th_[:,1:,:]
@@ -321,18 +321,10 @@ class Decoder(nn.Module):
             nn.Linear(feat_dim//6, 1)
         )
 
-        self.content = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim//6),
-            nn.BatchNorm1d(feat_dim//6),
-            nn.ReLU(),
-            nn.Linear(feat_dim//6, 17)           
-        )
-
-
         self.contact_up_fine = nn.Linear(1723, 6890)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, phi_a, phi_c, phi_p, semantic_feats):
+    def forward(self, phi_a, phi_c, phi_p):
 
         B = phi_a.size(0)
         affordance = self.aff_head(phi_a)                                 
@@ -343,9 +335,7 @@ class Decoder(nn.Module):
 
         spatial = self.spatial_head(phi_p).squeeze(dim=-1)
 
-        semantic = self.content(semantic_feats)
-
-        return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial, semantic
+        return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial
 
 class LEMON(nn.Module):
     def __init__(self, feat_dim, run_type, device):
@@ -361,7 +351,6 @@ class LEMON(nn.Module):
         self.device = device
         self.vertex_sampler = get_sample(device=self.device)
 
-        self.img_encoder = Enc_I(run_type, feat_dim)
         self.obj_encoder = DGCNN(device=self.device, emb_dim=self.emb_dim)
         self.hm_encoder = DGCNN(device=self.device, emb_dim=self.emb_dim)
 
@@ -371,24 +360,23 @@ class LEMON(nn.Module):
 
         self.decoder = Decoder(feat_dim, device=self.device)
 
-    def forward(self, I, O, H, C_h, C_o, meta_masks=None):
+    def forward(self, O, H, C_h, C_o, meta_masks=None):
 
-        B = I.size(0)
+        B = O.size(0)
         H = self.vertex_sampler.downsample(H, n1=0, n2=1)                     
         if meta_masks != None:
             constant_tensor = torch.ones_like(H).to(self.device)*0.01
             H = H*meta_masks + constant_tensor*(1-meta_masks)
-        F_i, semantic_feats = self.img_encoder(I)                     
-        F_o = self.obj_encoder(O)                                     
-        F_h = self.hm_encoder(H.mT)                                     
+        F_o = self.obj_encoder(O)
+        F_h = self.hm_encoder(H.mT)
 
-        T_o_, T_h_, F_o_, F_h_, varphi = self.Intention(F_i, F_o.mT, F_h.mT)
+        T_o_, T_h_, F_o_, F_h_, varphi = self.Intention(F_o.mT, F_h.mT)
         F_co, F_ch, phi_a, phi_c = self.Geometry_Correlation(C_h, C_o, F_o_, F_h_, T_o_, T_h_)
         phi_p = self.Spatial(F_co, F_ch, phi_c, T_o_, T_h_)
 
-        contact, affordance, spatial, semantic = self.decoder(phi_a, phi_c, phi_p, semantic_feats)
+        contact, affordance, spatial = self.decoder(phi_a, phi_c, phi_p)
 
-        return contact, affordance, spatial, semantic, varphi
+        return contact, affordance, spatial, varphi
 
 if __name__=='__main__':
     pass

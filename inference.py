@@ -40,8 +40,7 @@ def inference_batch(opt, dict, val_loader, model, device):
     
     with torch.no_grad():
         for i, data_info in enumerate(val_loader):
-            img = data_info['img'].to(device)
-            B = img.size(0)
+            B = data_info['hm_curvature'].size(0)
             img_paths = data_info['img_path']
             pts_paths = data_info['Pts_path']
             H, face = build_smplh_mesh(data_info['human'])
@@ -50,7 +49,7 @@ def inference_batch(opt, dict, val_loader, model, device):
             O = data_info['Pts'].float().to(device)
             C_h = data_info['hm_curvature'].to(device)
             C_o = data_info['obj_curvature'].to(device)
-            pre_contact, pre_affordance, pre_spatial, _, _ = model(img, O, H, C_h, C_o)
+            pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
             pre_affordance = pre_affordance.cpu().detach().numpy()
             contact_fine = pre_contact[-1]
 
@@ -123,11 +122,7 @@ def inference_single(model, opt, dict, device, outdir):
     model = model.to(device)
     model = model.eval()
 
-    #load image
-    img_size = (224, 224)
-    img = mask_img(opt.img_path, opt.mask)
-    Img = img.resize(img_size)
-    I = img_normalize(Img).unsqueeze(0).to(device)
+
 
     #load human
     human_param = get_human_param(opt.human_param_path)
@@ -147,7 +142,7 @@ def inference_single(model, opt, dict, device, outdir):
     O = torch.from_numpy(Pts).float().unsqueeze(0).to(device)
     C_o = np.load(opt.C_o, allow_pickle=True)
     C_o = torch.from_numpy(C_o).to(torch.float32).unsqueeze(dim=-1).unsqueeze(dim=0).to(device)
-    pre_contact, pre_affordance, pre_spatial, _, _ = model(I, O, H, C_h, C_o)
+    pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
     contact_fine = pre_contact[-1]
     pre_affordance = pre_affordance[0].cpu().detach().numpy()
 
@@ -187,11 +182,7 @@ def inference_single_wo_curvature(model, opt, dict, device, outdir):
     model = model.to(device)
     model = model.eval()
 
-    #load image
-    img_size = (224, 224)
-    img = mask_img(opt.img_path, opt.mask)
-    Img = img.resize(img_size)
-    I = img_normalize(Img).unsqueeze(0).to(device)
+
 
     #load human
     human_param = get_human_param(opt.human_param_path)
@@ -204,7 +195,7 @@ def inference_single_wo_curvature(model, opt, dict, device, outdir):
     Pts = pc_normalize(Pts)
     Pts = Pts.transpose()
     O = torch.from_numpy(Pts).float().unsqueeze(0).to(device)
-    pre_contact, pre_affordance, pre_spatial, _, _ = model(I, O, H)
+    pre_contact, pre_affordance, pre_spatial, _ = model(O, H)
     contact_fine = pre_contact[-1]
     pre_affordance = pre_affordance[0].cpu().detach().numpy()
 
