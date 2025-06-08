@@ -61,7 +61,6 @@ class _3DIR(Dataset):
         self.affordance_list = ['grasp', 'lift', 'open', 'lay', 'sit', 'support', 'wrapgrasp', 'pour', 
                         'move', 'pull', 'listen', 'press', 'cut', 'stab', 'ride', 'play', 'carry']
         
-        self.img_size = (224, 224)
         self.Hm_curvaure_folder = 'Data/Curvature/Human'
         self.Obj_curvaure_folder = 'Data/Curvature/Object'
         # self.Behave_curvaure_folder = 'Data/Curvature/Behave'
@@ -79,12 +78,6 @@ class _3DIR(Dataset):
         img_path = random.choice(self.object_to_images[object_])
 
         data_type = img_path.split('/')[1]
-
-        if(data_type != 'Behave'):
-            mask_path = img_path.split('/')[0] + '/mask/' + img_path.split('/')[2] + '/' + img_path.split('/')[-1].split('.')[0] + '.png'
-        else:
-            mask_path = img_path.replace('Images','mask').replace('.jpg','.png')
-        Img = self.mask_img(img_path, mask_path)
 
         if(data_type != 'Behave'):
             key_dict = os.path.join(*img_path.split('/')[1:])
@@ -135,10 +128,6 @@ class _3DIR(Dataset):
 
         sphere_center_pts = np.load(sphere_center, allow_pickle=True)
         sphere_center_pts = torch.from_numpy(sphere_center_pts).to(torch.float32).squeeze()
-
-        Img = Img.resize(self.img_size)
-        Img_data = img_normalize(Img)
-        data_info['img'] = Img_data
         data_info['img_path'] = img_path
         contact_dict = {'contact_fine': contact_label, 'contact_mid': contact_label_mid, 'contact_coarse': contact_label_corase}
 
@@ -169,7 +158,6 @@ class _3DIR(Dataset):
             Pts = []
             affordance_ = []
             Pts_path = []
-            affordance_logits = []
             # obj_range = self.pts_split[object_]
             obj_curvatures = []
             point_sample_idx = [index]
@@ -183,11 +171,10 @@ class _3DIR(Dataset):
                 Points, affordance_label = self.extract_point_file(point_path)
                 Points = pc_normalize(Points)
                 Points = Points.transpose()
-                affordance_label, affordance_index = self.get_affordance_label(img_path, affordance_label)
+                affordance_label, _ = self.get_affordance_label(img_path, affordance_label)
                 Pts.append(Points)
                 affordance_.append(affordance_label)
                 Pts_path.append(point_path)
-                affordance_logits.append(affordance_index)
         else:
             Pts_path = self.obj_files[index]
             obj_curvature_path = os.path.join(self.Obj_curvaure_folder, object_, Pts_path.split('/')[-1].replace('.txt','.pkl'))
@@ -197,12 +184,11 @@ class _3DIR(Dataset):
             Pts, affordance_label = self.extract_point_file(Pts_path)
             Pts = pc_normalize(Pts)
             Pts = Pts.transpose()
-            affordance_, affordance_logits = self.get_affordance_label(img_path, affordance_label)
+            affordance_, _ = self.get_affordance_label(img_path, affordance_label)
 
         data_info['Pts'] = Pts
         data_info['aff_gt'] = affordance_
         data_info['Pts_path'] = Pts_path
-        data_info['logits'] = affordance_logits
         data_info['obj_curvature'] = obj_curvatures
         return data_info
 
