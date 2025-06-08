@@ -26,8 +26,7 @@ def eval_process(val_dataset, val_loader, model, device):
     aff_num = 0
     with torch.no_grad():
         for i, data_info in enumerate(val_loader):
-            img = data_info['img'].to(device)
-            B = img.size(0)
+            B = data_info['hm_curvature'].size(0)
             file_paths = data_info['img_path']
             for iter in range(B):
                 obj = file_paths[iter].split('/')[2]
@@ -44,7 +43,7 @@ def eval_process(val_dataset, val_loader, model, device):
             sphere_center = data_info['sphere_center'].to(device)
             sphere_center = sphere_center - pelvis
             affordance_gt = data_info['aff_gt'].float().unsqueeze(dim=-1).to(device)
-            pred_contact, pred_affordance, spatial, _, _ = model(img, pts, vertex, hm_curvature, obj_curvature)
+            pred_contact, pred_affordance, spatial, _ = model(pts, vertex, hm_curvature, obj_curvature)
             temp_mse = (spatial-sphere_center)**2
             pred_coarse, pred_fine = pred_contact[0], pred_contact[1]
 

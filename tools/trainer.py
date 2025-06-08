@@ -45,12 +45,10 @@ def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model,
         for i, data_info in enumerate(train_loader):
 
             optimizer.zero_grad()
-            img = data_info['img'].to(device)
-            B = img.size(0)
+            B = data_info['hm_curvature'].size(0)
             contact_fine_gt, contact_coarse_gt = data_info['contact']['contact_fine'].to(device), data_info['contact']['contact_mid'].to(device)
             C_o = data_info['obj_curvature']
             C_h = data_info['hm_curvature'].to(device)
-            logits_labels = data_info['logits']
             H,_ = build_smplh_mesh(data_info['human'])
             H = H.to(device)
             H, pelvis = Pelvis_norm(H, device)
@@ -66,14 +64,13 @@ def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model,
                 O = data_info['Pts'][pair].float().to(device)
                 affordance_gt = data_info['aff_gt'][pair].float().unsqueeze(dim=-1).to(device)
                 C_o = C_o[pair].to(device)
-                logits_label = logits_labels[pair].to(device)
-                pre_contact, pre_affordance, pre_spatial, logits, varphi = model(img, O, H, C_h, C_o)
+                pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
                 contact_coarse, contact_fine = pre_contact[0], pre_contact[1]
                 distance = torch.norm(pre_spatial - pelvis_norm, dim=-1)
  
                 loss_c = loss_ca(contact_coarse, contact_coarse_gt) + loss_ca(contact_fine, contact_fine_gt)
                 loss_a = loss_ca(pre_affordance, affordance_gt)
-                loss_s = loss_ce(logits, logits_label) + varphi
+                loss_s = varphi
                 loss_p = F.mse_loss(pre_spatial, sphere_center, reduction='none').mean(-1).sum() + F.mse_loss(distance, distance_gt, reduction='sum')
                 temp_loss += (dict['w1']*loss_c + dict['w2']*loss_a + dict['w3']*loss_s + dict['w4']*loss_p)
             if rank ==0 :
@@ -130,12 +127,10 @@ def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca,
 
     with torch.no_grad():
         for i, data_info in enumerate(val_loader):
-            img = data_info['img'].to(device)
-            B = img.size(0)
+            B = data_info['hm_curvature'].size(0)
             contact_fine_gt, contact_coarse_gt = data_info['contact']['contact_fine'].to(device), data_info['contact']['contact_mid'].to(device)
             C_o = data_info['obj_curvature'].to(device)
             C_h = data_info['hm_curvature'].to(device)
-            logits_labels = data_info['logits']
             H,_ = build_smplh_mesh(data_info['human'])
             H = H.to(device)
             H, pelvis = Pelvis_norm(H, device)
@@ -148,14 +143,13 @@ def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca,
             O = data_info['Pts'].float().to(device)
             affordance_gt = data_info['aff_gt'].float().unsqueeze(dim=-1).to(device)
 
-            logits_label = logits_labels.to(device)
-            pre_contact, pre_affordance, pre_spatial, logits, varphi = model(img, O, H, C_h, C_o)
+            pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
             contact_coarse, contact_fine = pre_contact[0], pre_contact[1]
             distance = torch.norm(pre_spatial - pelvis_norm, dim=-1)
 
             loss_c = loss_ca(contact_coarse, contact_coarse_gt) + loss_ca(contact_fine, contact_fine_gt)
             loss_a = loss_ca(pre_affordance, affordance_gt)
-            loss_s = loss_ce(logits, logits_label) + varphi
+            loss_s = varphi
             loss_p = F.mse_loss(pre_spatial, sphere_center, reduction='none').mean(-1).sum() + F.mse_loss(distance, distance_gt, reduction='sum')
             temp_loss = (dict['w1']*loss_c + dict['w2']*loss_a + dict['w3']*loss_s + dict['w4']*loss_p)
             loss_sum += temp_loss.item()
