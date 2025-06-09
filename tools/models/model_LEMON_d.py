@@ -360,7 +360,18 @@ class LEMON(nn.Module):
 
         self.decoder = Decoder(feat_dim, device=self.device)
 
-    def forward(self, O, H, C_h, C_o, meta_masks=None):
+    def forward(self, O, H, C_h, C_o, text_desc=None, meta_masks=None):
+        """Forward pass.
+
+        Args:
+            O (Tensor): Object point cloud features.
+            H (Tensor): Human mesh vertices.
+            C_h (Tensor): Human curvature features.
+            C_o (Tensor): Object curvature features.
+            text_desc (str, optional): Textual description associated with the
+                sample. This input is currently unused.
+            meta_masks (Tensor, optional): Optional mask for the human mesh.
+        """
 
         B = O.size(0)
         H = self.vertex_sampler.downsample(H, n1=0, n2=1)                     

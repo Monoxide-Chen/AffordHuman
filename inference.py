@@ -49,20 +49,21 @@ def inference_batch(opt, dict, val_loader, model, device, model_type='d'):
             H = H.to(device)
             H, pelvis = Pelvis_norm(H, device)
             O = data_info['Pts'].float().to(device)
+            text_desc = data_info.get('text_desc', None)
             C_h = data_info['hm_curvature'].to(device)
             C_o = data_info['obj_curvature'].to(device)
             if model_type == 'no_cur':
-                pre_contact, pre_affordance, pre_spatial, _ = model(O, H)
+                pre_contact, pre_affordance, pre_spatial, _ = model(O, H, text_desc=text_desc)
             elif model_type == 'laso':
                 dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
-                outputs = model(dummy_img, O, H, C_h, C_o)
+                outputs = model(dummy_img, O, H, C_h, C_o, text_desc=text_desc)
                 pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
             elif model_type == 'p':
                 dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
-                outputs = model(dummy_img, O, H, C_h, C_o)
+                outputs = model(dummy_img, O, H, C_h, C_o, text_desc=text_desc)
                 pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
             else:
-                pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
+                pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o, text_desc=text_desc)
             pre_affordance = pre_affordance.cpu().detach().numpy()
             contact_fine = pre_contact[-1]
 
@@ -156,17 +157,17 @@ def inference_single(model, opt, dict, device, outdir):
     C_o = np.load(opt.C_o, allow_pickle=True)
     C_o = torch.from_numpy(C_o).to(torch.float32).unsqueeze(dim=-1).unsqueeze(dim=0).to(device)
     if isinstance(model, LEMON_wocur):
-        pre_contact, pre_affordance, pre_spatial, _ = model(O, H)
+        pre_contact, pre_affordance, pre_spatial, _ = model(O, H, text_desc=None)
     elif isinstance(model, LEMON_laso):
         dummy_img = torch.zeros((1, 3, 224, 224), device=device)
-        outputs = model(dummy_img, O, H, C_h, C_o)
+        outputs = model(dummy_img, O, H, C_h, C_o, text_desc=None)
         pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
     elif isinstance(model, LEMON_p):
         dummy_img = torch.zeros((1, 3, 224, 224), device=device)
-        outputs = model(dummy_img, O, H, C_h, C_o)
+        outputs = model(dummy_img, O, H, C_h, C_o, text_desc=None)
         pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
     else:
-        pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
+        pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o, text_desc=None)
     contact_fine = pre_contact[-1]
     pre_affordance = pre_affordance[0].cpu().detach().numpy()
 
@@ -219,7 +220,7 @@ def inference_single_wo_curvature(model, opt, dict, device, outdir):
     Pts = pc_normalize(Pts)
     Pts = Pts.transpose()
     O = torch.from_numpy(Pts).float().unsqueeze(0).to(device)
-    pre_contact, pre_affordance, pre_spatial, _ = model(O, H)
+    pre_contact, pre_affordance, pre_spatial, _ = model(O, H, text_desc=None)
     contact_fine = pre_contact[-1]
     pre_affordance = pre_affordance[0].cpu().detach().numpy()
 
