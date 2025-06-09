@@ -169,3 +169,4 @@ smpl_models/
 checkpoints/
 tools/models/hrnet/config/hrnet/hrnetv2_w40_imagenet_pretrained.pth
 eval_results.csv
+job.sh

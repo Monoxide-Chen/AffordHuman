@@ -4,4 +4,4 @@ human_3DIR: 'Data/smplh_param/human_label.json'
 behave: 'Data/Behave/behave.json'
 best_checkpoint: 'checkpoints/LEMON_D.pt'
 emb_dim: 768
-curvature: True
+curvature: False
