@@ -44,18 +44,19 @@ def eval_process(val_dataset, val_loader, model, device, model_type='d'):
 
             sphere_center = data_info['sphere_center'].to(device)
             sphere_center = sphere_center - pelvis
+            text_desc = data_info.get('text_desc', None)
             affordance_gt = data_info['aff_gt'].float().unsqueeze(dim=-1).to(device)
 
             if model_type == 'no_cur':
-                pred_contact, pred_affordance, spatial, _ = model(pts, vertex)
+                pred_contact, pred_affordance, spatial, _ = model(pts, vertex, text_desc=text_desc)
             elif model_type == 'laso':
-                pred_contact, pred_affordance, spatial, _ = model(pts, vertex)
+                pred_contact, pred_affordance, spatial, _ = model(pts, vertex, text_desc=text_desc)
             elif model_type == 'p':
                 dummy_img = torch.zeros((pts.size(0), 3, 224, 224), device=device)
-                outputs = model(dummy_img, pts, vertex, hm_curvature, obj_curvature)
+                outputs = model(dummy_img, pts, vertex, hm_curvature, obj_curvature, text_desc=text_desc)
                 pred_contact, pred_affordance, spatial = outputs[0], outputs[1], outputs[2]
             else:
-                pred_contact, pred_affordance, spatial, _ = model(pts, vertex, hm_curvature, obj_curvature)
+                pred_contact, pred_affordance, spatial, _ = model(pts, vertex, hm_curvature, obj_curvature, text_desc=text_desc)
 
             temp_mse = (spatial-sphere_center)**2
             pred_coarse, pred_fine = pred_contact[0], pred_contact[1]
