@@ -309,7 +309,7 @@ class Decoder(nn.Module):
 
         return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial
 
-class LEMON_wocur(nn.Module):
+class LEMON_laso(nn.Module):
     def __init__(self, feat_dim, run_type, device):
         super().__init__()
         class SwapAxes(nn.Module):
