@@ -5,4 +5,3 @@ behave: 'Data/Behave/behave.json'
 best_checkpoint: 'checkpoints/LEMON_D.pt'
 emb_dim: 768
 model: 'd'
-

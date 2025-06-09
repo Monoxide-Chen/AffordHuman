@@ -17,7 +17,6 @@ from tools.utils.build_layer import build_smplh_mesh, Pelvis_norm
 from numpy import nan
 
 def eval_process(val_dataset, val_loader, model, device, model_type='d'):
-    
     Obejct_ = []
     aff_preds = torch.zeros((len(val_dataset), 2048, 1))
     aff_targets = torch.zeros((len(val_dataset), 2048, 1))
@@ -46,18 +45,18 @@ def eval_process(val_dataset, val_loader, model, device, model_type='d'):
             sphere_center = data_info['sphere_center'].to(device)
             sphere_center = sphere_center - pelvis
             affordance_gt = data_info['aff_gt'].float().unsqueeze(dim=-1).to(device)
+
             if model_type == 'no_cur':
                 pred_contact, pred_affordance, spatial, _ = model(pts, vertex)
             elif model_type == 'laso':
-                dummy_img = torch.zeros((pts.size(0), 3, 224, 224), device=device)
-                outputs = model(dummy_img, pts, vertex, hm_curvature, obj_curvature)
-                pred_contact, pred_affordance, spatial = outputs[0], outputs[1], outputs[2]
+                pred_contact, pred_affordance, spatial, _ = model(pts, vertex)
             elif model_type == 'p':
                 dummy_img = torch.zeros((pts.size(0), 3, 224, 224), device=device)
                 outputs = model(dummy_img, pts, vertex, hm_curvature, obj_curvature)
                 pred_contact, pred_affordance, spatial = outputs[0], outputs[1], outputs[2]
             else:
                 pred_contact, pred_affordance, spatial, _ = model(pts, vertex, hm_curvature, obj_curvature)
+
             temp_mse = (spatial-sphere_center)**2
             pred_coarse, pred_fine = pred_contact[0], pred_contact[1]
 
@@ -248,6 +247,7 @@ def read_yaml(path):
 def run(opt, dict):
     val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'], dict['behave'], mode='val')
     val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8)
+
     model_type = dict.get('model', 'd')
     if model_type == 'laso':
         model = LEMON_laso(dict['emb_dim'], run_type='infer', device=opt.device)
@@ -257,6 +257,7 @@ def run(opt, dict):
         model = LEMON_p(dict['emb_dim'], run_type='infer', device=opt.device)
     else:
         model = LEMON_d(dict['emb_dim'], run_type='infer', device=opt.device)
+
     checkpoint = torch.load(dict['best_checkpoint'], map_location=opt.device)
     model.load_state_dict(checkpoint)
     model = model.to(opt.device)

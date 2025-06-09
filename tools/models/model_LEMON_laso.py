@@ -1,14 +1,12 @@
 import torch
 import torch.nn as nn
 import pdb
-from einops import rearrange, repeat
-from torch.nn import functional as F
+from einops import rearrange
 from tools.models.dgcnn import DGCNN
 from tools.utils.mesh_sampler import get_sample
 from tools.models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from tools.models.hrnet.config import update_config as hrnet_update_config
 from tools.models.hrnet.config import config as hrnet_config
-from transformers import AutoModel, AutoTokenizer
 
 
 class PreNorm(nn.Module):
@@ -168,19 +166,18 @@ class Intention_Excavation(nn.Module):
         self.T_h = nn.Parameter(torch.zeros(1, 1, input_dim))
         self.cosine = nn.CosineEmbeddingLoss()
 
-    def forward(self ,F_i, F_o, F_h):
+    def forward(self ,F_o, F_h):
 
         B = F_o.size(0)
 
         F_to = torch.cat((self.T_o.expand(B,-1,-1), F_o), dim=1)
-        F_th = torch.cat((self.T_o.expand(B,-1,-1), F_h), dim=1)
+        F_th = torch.cat((self.T_h.expand(B,-1,-1), F_h), dim=1)
 
-        # F_to_, F_th_ = self.co_intention(F_to, F_th, F_i)
+        F_to_, F_th_ = F_to, F_th
 
-        # T_o_, T_h_ =  F_to_[:,0,:], F_th_[:,0,:]
-        # F_o_, F_h_ = F_to_[:,1:,:], F_th_[:,1:,:]
-        T_o_, T_h_ =  F_to[:,0,:], F_th[:,0,:]
-        F_o_, F_h_ = F_to[:,1:,:], F_th[:,1:,:]
+        T_o_, T_h_ =  F_to_[:,0,:], F_th_[:,0,:]
+        F_o_, F_h_ = F_to_[:,1:,:], F_th_[:,1:,:]
+
         tar = torch.ones(B).to(self.device)
         varphi = self.cosine(T_o_, T_h_, tar)
 
@@ -195,25 +192,6 @@ class Curvature_guided_Geometric_Correlation(nn.Module):
             
             def forward(self, x):
                 return x.transpose(1, 2)
-        self.hm_curvature_emb = nn.Sequential(
-            nn.Conv1d(1, 128, 1),
-            nn.BatchNorm1d(128),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Conv1d(128, input_dim, 1),
-            nn.BatchNorm1d(input_dim),
-            nn.LeakyReLU(negative_slope=0.1),
-            SwapAxes(),
-        )
-
-        self.obj_curvature_emb = nn.Sequential(
-            nn.Conv1d(1, 128, 1),
-            nn.BatchNorm1d(128),
-            nn.LeakyReLU(negative_slope=0.1),
-            nn.Conv1d(128, input_dim, 1),
-            nn.BatchNorm1d(input_dim),
-            nn.LeakyReLU(negative_slope=0.1),
-            SwapAxes(),
-        )
 
         self.f_m1 = Cross_Attention(dim = input_dim, heads = 12, dropout = 0.3, dim_head = 64)
         self.f_m2 = Cross_Attention(dim = input_dim, heads = 12, dropout = 0.3, dim_head = 64)
@@ -235,24 +213,16 @@ class Curvature_guided_Geometric_Correlation(nn.Module):
         self.affordance = Transformer(dim = input_dim, depth = 1, heads = 12, mlp_dim = 768, dropout = 0.3, dim_head = 64)
         self.contact = Transformer(dim = input_dim, depth = 1, heads = 12, mlp_dim = 768, dropout = 0.3, dim_head = 64)
 
-    def forward(self, C_h, C_o, F_o_, F_h_, T_o_, T_h_):
+    def forward(self, F_o_, F_h_, T_o_, T_h_):
 
-        C_o_emb = self.obj_curvature_emb(C_o.mT)               
-        C_h_emb = self.hm_curvature_emb(C_h.mT)                   
 
-        C_o_ = self.f_m1(C_o_emb, C_h_emb)
-        C_h_ = self.f_m2(C_h_emb, C_o_emb)
+        conditional_aff = torch.cat((T_o_.unsqueeze(dim=1), F_h_), dim=1)
+        conditional_contact = torch.cat((T_h_.unsqueeze(dim=1), F_o_), dim=1)
 
-        F_co = self.fusion_obj(torch.cat((F_o_, C_o_), dim=2).mT)
-        F_ch = self.fusion_hm(torch.cat((F_h_, C_h_), dim=2).mT)
+        phi_a = self.affordance(F_o_, conditional_aff)
+        phi_c = self.contact(F_h_, conditional_contact)
 
-        conditional_aff = torch.cat((T_o_.unsqueeze(dim=1), F_ch), dim=1)
-        conditional_contact = torch.cat((T_h_.unsqueeze(dim=1), F_co), dim=1)
-
-        phi_a = self.affordance(F_co, conditional_aff)
-        phi_c = self.contact(F_ch, conditional_contact)
-
-        return F_co, F_ch, phi_a, phi_c
+        return phi_a, phi_c
 
 class Contact_aware_Spatial_Relation(nn.Module):
     def __init__(self, input_dim, mlp_dim):
@@ -323,33 +293,23 @@ class Decoder(nn.Module):
             nn.Linear(feat_dim//6, 1)
         )
 
-        self.content = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim//6),
-            nn.BatchNorm1d(feat_dim//6),
-            nn.ReLU(),
-            nn.Linear(feat_dim//6, 17)           
-        )
-
-
         self.contact_up_fine = nn.Linear(1723, 6890)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, phi_a, phi_c, phi_p, semantic_feats):
+    def forward(self, phi_a, phi_c, phi_p):
 
         B = phi_a.size(0)
-        affordance = self.aff_head(phi_a)                                 
+        affordance = self.aff_head(phi_a)                                  
         affordance = self.sigmoid(affordance)
 
         contact_coarse = self.contact_head(phi_c)
-        contact_fine = self.contact_up_fine(contact_coarse.mT)            
+        contact_fine = self.contact_up_fine(contact_coarse.mT)              
 
         spatial = self.spatial_head(phi_p).squeeze(dim=-1)
 
-        semantic = self.content(semantic_feats)
+        return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial
 
-        return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial, semantic
-
-class LEMON(nn.Module):
+class LEMON_laso(nn.Module):
     def __init__(self, feat_dim, run_type, device):
         super().__init__()
         class SwapAxes(nn.Module):
@@ -363,7 +323,6 @@ class LEMON(nn.Module):
         self.device = device
         self.vertex_sampler = get_sample(device=self.device)
 
-        self.img_encoder = Enc_I(run_type, feat_dim)
         self.obj_encoder = DGCNN(device=self.device, emb_dim=self.emb_dim)
         self.hm_encoder = DGCNN(device=self.device, emb_dim=self.emb_dim)
 
@@ -372,44 +331,24 @@ class LEMON(nn.Module):
         self.Spatial = Contact_aware_Spatial_Relation(feat_dim, feat_dim)
 
         self.decoder = Decoder(feat_dim, device=self.device)
-        self.text_encoder = AutoModel.from_pretrained("roberta-base")
-        self.tokenizer = AutoTokenizer.from_pretrained("roberta-base")
-    def forward(self, I, O, H, C_h, C_o, meta_masks=None, text=None):
+
+    def forward(self, O, H, meta_masks=None):
 
         B = O.size(0)
-        H = self.vertex_sampler.downsample(H, n1=0, n2=1)                     
+        H = self.vertex_sampler.downsample(H, n1=0, n2=1)
         if meta_masks != None:
             constant_tensor = torch.ones_like(H).to(self.device)*0.01
             H = H*meta_masks + constant_tensor*(1-meta_masks)
-        F_i, semantic_feats = self.img_encoder(I)                   
-        F_o = self.obj_encoder(O)                                     
-        F_h = self.hm_encoder(H.mT)                                     
+        F_o = self.obj_encoder(O)
+        F_h = self.hm_encoder(H.mT)
 
-        T_o_, T_h_, F_o_, F_h_, varphi = self.Intention(F_i, F_o.mT, F_h.mT)
-        F_co, F_ch, phi_a, phi_c = self.Geometry_Correlation(C_h, C_o, F_o_, F_h_, T_o_, T_h_)
-        phi_p = self.Spatial(F_co, F_ch, phi_c, T_o_, T_h_)
-        if text != None:
-            t_feat, t_mask = self.forward_text(list(text), F_o.device)
-            semantic_feats = t_feat
-        contact, affordance, spatial, semantic = self.decoder(phi_a, phi_c, phi_p, semantic_feats)
+        T_o_, T_h_, F_o_, F_h_, varphi = self.Intention(F_o.mT, F_h.mT)
+        phi_a, phi_c = self.Geometry_Correlation(F_o_, F_h_, T_o_, T_h_)
+        phi_p = self.Spatial(F_o_, F_h_, phi_c, T_o_, T_h_)
 
-        return contact, affordance, spatial, semantic, varphi
-    def forward_text(self, text_queries, device):
-        """
-        text_queries : list of question str 
-        out: text_embedding: bs, len, dim
-            mask: bs, len (bool) [1,1,1,1,0,0]
-        """
-        # tokenized_queries = self.tokenizer.batch_encode_plus(text_queries, padding='longest', return_tensors='pt')
-        tokenized_queries = self.tokenizer.batch_encode_plus(text_queries, padding='max_length', truncation=True,
-                                                            max_length=self.n_groups,
-                                                            return_tensors='pt')
-        tokenized_queries = tokenized_queries.to(device)
-        with torch.inference_mode(mode=self.freeze_text_encoder):
-            encoded_text = self.text_encoder(**tokenized_queries).last_hidden_state
-        # print(tokenized_queries.attention_mask.bool())
+        contact, affordance, spatial = self.decoder(phi_a, phi_c, phi_p)
 
-        return self.text_resizer(encoded_text), tokenized_queries.attention_mask.bool()
+        return contact, affordance, spatial, varphi
 
 if __name__=='__main__':
     pass

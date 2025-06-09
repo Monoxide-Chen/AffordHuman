@@ -55,6 +55,7 @@ def main(opt, dict):
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True, broadcast_buffers=False)
     train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model, logger, device, rank, model_type)
+
     logger.close()
 
 def seed_torch(seed=42):

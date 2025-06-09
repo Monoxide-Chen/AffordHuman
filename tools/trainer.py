@@ -64,13 +64,11 @@ def train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model
                 O = data_info['Pts'][pair].float().to(device)
                 affordance_gt = data_info['aff_gt'][pair].float().unsqueeze(dim=-1).to(device)
                 C_o = C_o[pair].to(device)
+
                 if model_type == 'no_cur':
                     pre_contact, pre_affordance, pre_spatial, varphi = model(O, H)
                 elif model_type == 'laso':
-                    dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
-                    outputs = model(dummy_img, O, H, C_h, C_o)
-                    pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
-                    varphi = outputs[-1]
+                    pre_contact, pre_affordance, pre_spatial, varphi = model(O, H)
                 elif model_type == 'p':
                     dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
                     outputs = model(dummy_img, O, H, C_h, C_o)
@@ -78,6 +76,7 @@ def train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model
                     varphi = outputs[-1]
                 else:
                     pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
+
                 contact_coarse, contact_fine = pre_contact[0], pre_contact[1]
                 distance = torch.norm(pre_spatial - pelvis_norm, dim=-1)
  
@@ -159,10 +158,7 @@ def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca,
             if model_type == 'no_cur':
                 pre_contact, pre_affordance, pre_spatial, varphi = model(O, H)
             elif model_type == 'laso':
-                dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
-                outputs = model(dummy_img, O, H, C_h, C_o)
-                pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
-                varphi = outputs[-1]
+                pre_contact, pre_affordance, pre_spatial, varphi = model(O, H)
             elif model_type == 'p':
                 dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
                 outputs = model(dummy_img, O, H, C_h, C_o)
@@ -170,6 +166,7 @@ def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca,
                 varphi = outputs[-1]
             else:
                 pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
+
             contact_coarse, contact_fine = pre_contact[0], pre_contact[1]
             distance = torch.norm(pre_spatial - pelvis_norm, dim=-1)
 
