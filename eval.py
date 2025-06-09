@@ -245,7 +245,9 @@ def read_yaml(path):
     return dict
 
 def run(opt, dict):
-    val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'], dict['behave'], mode='val')
+    val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'],
+                        dict['behave'], mode='val',
+                        desc_file=dict.get('desc_file'))
     val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8)
 
     model_type = dict.get('model', 'd')

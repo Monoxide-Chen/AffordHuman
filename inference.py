@@ -285,7 +285,9 @@ if __name__ == '__main__':
     #batch
     infer_type = dict['infer_type']
     if infer_type == 'batch':
-        val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'], dict['behave'], mode='val')
+        val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'],
+                            dict['behave'], mode='val',
+                            desc_file=dict.get('desc_file'))
         val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8)
         inference_batch(opt, dict, val_loader, model, device, model_type)
     elif infer_type == 'single':

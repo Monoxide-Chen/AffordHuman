@@ -32,9 +32,13 @@ def main(opt, dict):
         else:
             device = torch.device("cpu")
 
-    train_dataset = _3DIR(dict['train_image'], dict['train_pts'], dict['human_3DIR'], dict['behave'], mode='train')
+    train_dataset = _3DIR(dict['train_image'], dict['train_pts'], dict['human_3DIR'],
+                          dict['behave'], mode='train',
+                          desc_file=dict.get('desc_file'))
     train_sampler = DistributedSampler(train_dataset)
-    val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'], dict['behave'], mode='val')
+    val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'],
+                        dict['behave'], mode='val',
+                        desc_file=dict.get('desc_file'))
     val_sampler = DistributedSampler(val_dataset)
 
     train_loader = DataLoader(train_dataset, batch_size=opt.batch_size, sampler=train_sampler, num_workers=8, drop_last=True)
