@@ -160,8 +160,6 @@ cython_debug/
 #.idea/
 .DS_Store/
 Data/
-!Data/txt_scripts/
-!Data/txt_scripts/human_object_desc.json
 *.e*
 *.o*
 Output*/
