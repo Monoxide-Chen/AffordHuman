@@ -29,12 +29,29 @@ def pc_normalize(pc):
     return pc
 
 class _3DIR(Dataset):
-    def __init__(self, img_file, obj_file, human_file, behave_file, mode):
+    def __init__(self, img_file, obj_file, human_file, behave_file, mode, desc_file=None):
+        """Create the 3DIR dataset.
+
+        Args:
+            img_file (str): Path to image file list.
+            obj_file (str): Path to object point cloud list.
+            human_file (str): Path to SMPL-H parameter json.
+            behave_file (str): Path to Behave annotations json.
+            mode (str): Dataset split, ``train`` or ``val``.
+            desc_file (str, optional): Optional json file containing textual
+                descriptions keyed by image name.
+        """
         super(_3DIR).__init__()
 
         self.mode = mode
         self.img_files = self.read_file(img_file)
-        self.data_dict = json.load(open(human_file, 'r'))
+        with open(human_file, 'r') as f:
+            self.data_dict = json.load(f)
+
+        self.desc_dict = {}
+        if desc_file and os.path.isfile(desc_file):
+            with open(desc_file, 'r', encoding='utf-8') as f:
+                self.desc_dict = json.load(f)
         # self.behave_dict = json.load(open(behave_file, 'r'))
         self.object_to_images = defaultdict(list)
         for img_path in self.img_files:
@@ -82,6 +99,7 @@ class _3DIR(Dataset):
         if(data_type != 'Behave'):
             key_dict = os.path.join(*img_path.split('/')[1:])
             smplh_param = self.data_dict[key_dict]['smplh_param']
+            text_desc = self.desc_dict.get(key_dict, "")
 
             contact_path = img_path.split('.')[0]
             contact_path = contact_path.split('/')
@@ -99,6 +117,7 @@ class _3DIR(Dataset):
             key_dict = img_path.split('/')[-1].split('_')[:-1]
             key_ = '_'.join(key_dict)
             smplh_param = self.behave_dict[key_]
+            text_desc = self.desc_dict.get(key_, "")
             
             contact_folder = img_path.replace('Images','Contact').split('/')[:4]
             contact_label = '/'.join(contact_folder) + '/' + key_ + '_contact.pkl'
@@ -119,6 +138,7 @@ class _3DIR(Dataset):
         smplh_param['right_hand_pose'] = torch.tensor(smplh_param['right_hand_pose']).reshape(15, 3, 3)
         smplh_param['global_orient'] = torch.tensor(smplh_param['global_orient']).reshape(1, 3, 3)
         data_info['human'] = smplh_param
+        data_info['text_desc'] = text_desc
 
 
         contact_label = np.load(contact_label, allow_pickle=True)
