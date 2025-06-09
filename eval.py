@@ -6,14 +6,17 @@ import os
 import pandas as pd
 import yaml
 import argparse
-from tools.models.model_LEMON_d import LEMON
+from tools.models.model_LEMON_d import LEMON as LEMON_d
+from tools.models.model_LEMON_p import LEMON as LEMON_p
+from tools.models.model_LEMON_d_laso import LEMON as LEMON_laso
+from tools.models.LEMON_noCur import LEMON_wocur
 from dataset_utils.dataset_3DIR import _3DIR
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tools.utils.build_layer import build_smplh_mesh, Pelvis_norm
 from numpy import nan
 
-def eval_process(val_dataset, val_loader, model, device):
+def eval_process(val_dataset, val_loader, model, device, model_type='d'):
     
     Obejct_ = []
     aff_preds = torch.zeros((len(val_dataset), 2048, 1))
@@ -39,11 +42,22 @@ def eval_process(val_dataset, val_loader, model, device):
             pts = data_info['Pts'].float().to(device)
             obj_curvature = data_info['obj_curvature'].to(device)
             hm_curvature = data_info['hm_curvature'].to(device)
-            
+
             sphere_center = data_info['sphere_center'].to(device)
             sphere_center = sphere_center - pelvis
             affordance_gt = data_info['aff_gt'].float().unsqueeze(dim=-1).to(device)
-            pred_contact, pred_affordance, spatial, _ = model(pts, vertex, hm_curvature, obj_curvature)
+            if model_type == 'no_cur':
+                pred_contact, pred_affordance, spatial, _ = model(pts, vertex)
+            elif model_type == 'laso':
+                dummy_img = torch.zeros((pts.size(0), 3, 224, 224), device=device)
+                outputs = model(dummy_img, pts, vertex, hm_curvature, obj_curvature)
+                pred_contact, pred_affordance, spatial = outputs[0], outputs[1], outputs[2]
+            elif model_type == 'p':
+                dummy_img = torch.zeros((pts.size(0), 3, 224, 224), device=device)
+                outputs = model(dummy_img, pts, vertex, hm_curvature, obj_curvature)
+                pred_contact, pred_affordance, spatial = outputs[0], outputs[1], outputs[2]
+            else:
+                pred_contact, pred_affordance, spatial, _ = model(pts, vertex, hm_curvature, obj_curvature)
             temp_mse = (spatial-sphere_center)**2
             pred_coarse, pred_fine = pred_contact[0], pred_contact[1]
 
@@ -234,13 +248,21 @@ def read_yaml(path):
 def run(opt, dict):
     val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'], dict['behave'], mode='val')
     val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8)
-    model = LEMON(dict['emb_dim'], run_type='infer', device=opt.device)
+    model_type = dict.get('model', 'd')
+    if model_type == 'laso':
+        model = LEMON_laso(dict['emb_dim'], run_type='infer', device=opt.device)
+    elif model_type == 'no_cur':
+        model = LEMON_wocur(dict['emb_dim'], run_type='infer', device=opt.device)
+    elif model_type == 'p':
+        model = LEMON_p(dict['emb_dim'], run_type='infer', device=opt.device)
+    else:
+        model = LEMON_d(dict['emb_dim'], run_type='infer', device=opt.device)
     checkpoint = torch.load(dict['best_checkpoint'], map_location=opt.device)
     model.load_state_dict(checkpoint)
     model = model.to(opt.device)
     model = model.eval()
 
-    eval_process(val_dataset, val_loader, model, opt.device)
+    eval_process(val_dataset, val_loader, model, opt.device, model_type)
 
 if __name__=='__main__':
 
