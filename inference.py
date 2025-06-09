@@ -5,7 +5,9 @@ import open3d as o3d
 import argparse
 import pdb
 import yaml
-from tools.models.model_LEMON_d import LEMON
+from tools.models.model_LEMON_d import LEMON as LEMON_d
+from tools.models.model_LEMON_p import LEMON as LEMON_p
+from tools.models.model_LEMON_d_laso import LEMON as LEMON_laso
 from tools.models.LEMON_noCur import LEMON_wocur
 from PIL import Image
 from dataset_utils.dataset_3DIR import _3DIR
@@ -15,7 +17,7 @@ from dataset_utils.dataset_3DIR import img_normalize, pc_normalize
 from tools.utils.mesh_sampler import get_sample
 from torch.utils.data import DataLoader
 
-def inference_batch(opt, dict, val_loader, model, device):
+def inference_batch(opt, dict, val_loader, model, device, model_type='d'):
 
     checkpoint = torch.load(dict['best_checkpoint'], map_location=device)
 
@@ -49,7 +51,18 @@ def inference_batch(opt, dict, val_loader, model, device):
             O = data_info['Pts'].float().to(device)
             C_h = data_info['hm_curvature'].to(device)
             C_o = data_info['obj_curvature'].to(device)
-            pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
+            if model_type == 'no_cur':
+                pre_contact, pre_affordance, pre_spatial, _ = model(O, H)
+            elif model_type == 'laso':
+                dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
+                outputs = model(dummy_img, O, H, C_h, C_o)
+                pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
+            elif model_type == 'p':
+                dummy_img = torch.zeros((O.size(0), 3, 224, 224), device=device)
+                outputs = model(dummy_img, O, H, C_h, C_o)
+                pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
+            else:
+                pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
             pre_affordance = pre_affordance.cpu().detach().numpy()
             contact_fine = pre_contact[-1]
 
@@ -142,7 +155,18 @@ def inference_single(model, opt, dict, device, outdir):
     O = torch.from_numpy(Pts).float().unsqueeze(0).to(device)
     C_o = np.load(opt.C_o, allow_pickle=True)
     C_o = torch.from_numpy(C_o).to(torch.float32).unsqueeze(dim=-1).unsqueeze(dim=0).to(device)
-    pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
+    if isinstance(model, LEMON_wocur):
+        pre_contact, pre_affordance, pre_spatial, _ = model(O, H)
+    elif isinstance(model, LEMON_laso):
+        dummy_img = torch.zeros((1, 3, 224, 224), device=device)
+        outputs = model(dummy_img, O, H, C_h, C_o)
+        pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
+    elif isinstance(model, LEMON_p):
+        dummy_img = torch.zeros((1, 3, 224, 224), device=device)
+        outputs = model(dummy_img, O, H, C_h, C_o)
+        pre_contact, pre_affordance, pre_spatial = outputs[0], outputs[1], outputs[2]
+    else:
+        pre_contact, pre_affordance, pre_spatial, _ = model(O, H, C_h, C_o)
     contact_fine = pre_contact[-1]
     pre_affordance = pre_affordance[0].cpu().detach().numpy()
 
@@ -249,20 +273,23 @@ if __name__ == '__main__':
     else:
         device = torch.device("cpu")
 
-    curvature = dict['curvature']
-    print('whether to use curvature:', curvature)
-    if curvature:
-        model = LEMON(dict['emb_dim'], run_type='infer', device=device)
-    else:
+    model_type = dict['model']
+    if model_type == 'laso':
+        model = LEMON_laso(dict['emb_dim'], run_type='infer', device=device)
+    elif model_type == 'no_cur':
         model = LEMON_wocur(dict['emb_dim'], run_type='infer', device=device)
+    elif model_type == 'p':
+        model = LEMON_p(dict['emb_dim'], run_type='infer', device=device)
+    else:
+        model = LEMON_d(dict['emb_dim'], run_type='infer', device=device)
     #batch
     infer_type = dict['infer_type']
     if infer_type == 'batch':
         val_dataset = _3DIR(dict['val_image'], dict['val_pts'], dict['human_3DIR'], dict['behave'], mode='val')
         val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8)
-        inference_batch(opt, dict, val_loader, model, device)
+        inference_batch(opt, dict, val_loader, model, device, model_type)
     elif infer_type == 'single':
-        if curvature:
-            inference_single(model, opt, dict, device, opt.outdir)
-        else:
+        if model_type == 'no_cur':
             inference_single_wo_curvature(model, opt, dict, device, opt.outdir)
+        else:
+            inference_single(model, opt, dict, device, opt.outdir)

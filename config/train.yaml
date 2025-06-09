@@ -14,4 +14,4 @@ w1: 40.0
 w2: 40.0
 w3: 20.0
 w4: 20.0
-curvature: False
+model: 'd'
