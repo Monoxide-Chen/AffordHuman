@@ -10,6 +10,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 from dataset_utils.dataset_3DIR import _3DIR
 from tools.models.model_LEMON_d import LEMON
+from tools.models.LEMON_noCur import LEMON_wocur
 from tools.utils.logger import Logger
 
 def main(opt, dict):
@@ -39,10 +40,15 @@ def main(opt, dict):
 
     logger = Logger(os.path.join(opt.save_checkpoint_path, 'log.txt'), title="eval_matrix")
     logger.set_names(["Epoch", 'AUC', 'aIOU', 'SIM', 'Precision', 'Recall', 'F1', 'geo_fn', 'geo_fp','MSE'])
-    model = LEMON(dict['emb_dim'], run_type='train', device=device)
+
+    curvature = dict.get('curvature', True)
+    if curvature:
+        model = LEMON(dict['emb_dim'], run_type='train', device=device)
+    else:
+        model = LEMON_wocur(dict['emb_dim'], run_type='train', device=device)
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True, broadcast_buffers=False)
-    train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model, logger, device, rank)
+    train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model, logger, device, rank, curvature)
     logger.close()
 
 def seed_torch(seed=42):

@@ -9,7 +9,7 @@ from tools.utils.build_layer import build_smplh_mesh, Pelvis_norm
 from tools.utils.evaluation import evaluate
 from tools.utils.loss import L_ca
 
-def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model, logger, device, rank):
+def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model, logger, device, rank, curvature=True):
 
     screen_logger = logging.getLogger("Model")
     screen_logger.setLevel(logging.INFO)
@@ -64,7 +64,10 @@ def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model,
                 O = data_info['Pts'][pair].float().to(device)
                 affordance_gt = data_info['aff_gt'][pair].float().unsqueeze(dim=-1).to(device)
                 C_o = C_o[pair].to(device)
-                pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
+                if curvature:
+                    pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
+                else:
+                    pre_contact, pre_affordance, pre_spatial, varphi = model(O, H)
                 contact_coarse, contact_fine = pre_contact[0], pre_contact[1]
                 distance = torch.norm(pre_spatial - pelvis_norm, dim=-1)
  
@@ -84,7 +87,7 @@ def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model,
             log_string(f'Epoch: {epoch + 1} : loss: {avg_loss}')
         if(epoch % 1 ==0):
             model = model.eval()
-            val_loss, best_results = val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca, loss_ce, logger, device, batches_val)
+            val_loss, best_results = val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca, loss_ce, logger, device, batches_val, curvature)
             if rank ==0 :
                 log_string(f'Epoch: {epoch + 1} : val_loss: {val_loss}')
                 if 'AUC' in best_results:
@@ -111,7 +114,7 @@ def train(opt, dict, train_loader, train_sampler,val_loader, val_dataset, model,
                 Precision:{best_current["precision"]} | Recall:{best_current["Recall"]} | F1:{best_current["f1"]} | geo:{best_current["geo"]} \
                 | MSE:{best_current["MSE"]}')
 
-def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca, loss_ce, logger, device, batches_val):
+def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca, loss_ce, logger, device, batches_val, curvature=True):
     
     best_results = {}
     loss_sum = 0
@@ -143,7 +146,10 @@ def val(opt, dict, epoch, val_dataset, val_loader, model, best_current, loss_ca,
             O = data_info['Pts'].float().to(device)
             affordance_gt = data_info['aff_gt'].float().unsqueeze(dim=-1).to(device)
 
-            pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
+            if curvature:
+                pre_contact, pre_affordance, pre_spatial, varphi = model(O, H, C_h, C_o)
+            else:
+                pre_contact, pre_affordance, pre_spatial, varphi = model(O, H)
             contact_coarse, contact_fine = pre_contact[0], pre_contact[1]
             distance = torch.norm(pre_spatial - pelvis_norm, dim=-1)
 

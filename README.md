@@ -75,13 +75,13 @@ For the visualization in main paper, we use [Blender](https://www.blender.org/) 
 <font color=Red>Note</font>: If you use the model with curvature, you should obtain curvatures for the human and object geometry. For convenience, we recommend using [CloudCompare](https://www.danielgm.net/cc/) or [trimesh.curvature](https://trimesh.org/trimesh.curvature.html) for calculation. After testing, LEMON could work well with the curvature calculated through these methods.
 
 ### Training <a name="43"></a>
-If you want to train LEMON, please run the following command, you could modify the parameter at `config/train.yaml`.
+If you want to train LEMON, please run the following command, you could modify the parameters at `config/train.yaml`. Set `curvature` to `False` if you train without curvature.
 ```bash  
 bash train.sh
 ```
 
 ### Evaluation <a name="44"></a>
-Run the following command to evaluate the model, you could see the setting at `config/eval.yaml`.
+Run the following command to evaluate the model, you could see the setting at `config/eval.yaml`. Similarly, set `curvature` to `False` if you evaluate without curvature.
 ```bash  
 python eval.py --yaml config/eval.yaml
 ```
