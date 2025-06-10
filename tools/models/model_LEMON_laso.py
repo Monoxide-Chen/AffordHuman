@@ -2,13 +2,12 @@ import torch
 import torch.nn as nn
 import pdb
 from einops import rearrange
-from tools.models.dgcnn import DGCNN
 from tools.utils.mesh_sampler import get_sample
 from tools.models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from tools.models.hrnet.config import update_config as hrnet_update_config
 from tools.models.hrnet.config import config as hrnet_config
-
-
+from tools.models.PointNet import Pts_Encoder, Pts_Decoder_with_gpb
+from transformers import AutoModel, AutoTokenizer
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -309,7 +308,7 @@ class Decoder(nn.Module):
 
         return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial
 
-class LEMON_laso(nn.Module):
+class LEMON(nn.Module):
     def __init__(self, feat_dim, run_type, device):
         super().__init__()
         class SwapAxes(nn.Module):
@@ -319,12 +318,24 @@ class LEMON_laso(nn.Module):
             def forward(self, x):
                 return x.transpose(1, 2)
 
-        self.emb_dim = 1024
+        self.emb_dim = 512
+        self.n_groups = 40
         self.device = device
         self.vertex_sampler = get_sample(device=self.device)
-
-        self.obj_encoder = DGCNN(device=self.device, emb_dim=self.emb_dim)
-        self.hm_encoder = DGCNN(device=self.device, emb_dim=self.emb_dim)
+        text_encoder_type = 'roberta-base'
+        self.freeze_text_encoder = False
+        self.text_encoder = AutoModel.from_pretrained(text_encoder_type)
+        self.tokenizer = AutoTokenizer.from_pretrained(text_encoder_type)
+        self.freeze_text_encoder = False
+        if self.freeze_text_encoder:
+            for p in self.text_encoder.parameters():
+                p.requires_grad_(False)
+        self.text_resizer = nn.Sequential(nn.Linear(self.text_encoder.config.hidden_size, self.emb_dim, bias=True),
+                            nn.LayerNorm(self.emb_dim, eps=1e-12))
+        self.obj_encoder = Pts_Encoder()
+        self.obj_decoder = Pts_Decoder_with_gpb(self.emb_dim, self.n_groups)
+        self.hm_encoder = Pts_Encoder()
+        self.hm_decoder = Pts_Decoder_with_gpb(self.emb_dim, self.n_groups)
 
         self.Intention = Intention_Excavation(feat_dim, device)
         self.Geometry_Correlation = Curvature_guided_Geometric_Correlation(feat_dim)
@@ -344,12 +355,15 @@ class LEMON_laso(nn.Module):
         """
 
         B = O.size(0)
+        t_feat, t_mask = self.forward_text(list(text_desc), O.device)  # [batch, q_len, d_model]
         H = self.vertex_sampler.downsample(H, n1=0, n2=1)
         if meta_masks != None:
             constant_tensor = torch.ones_like(H).to(self.device)*0.01
             H = H*meta_masks + constant_tensor*(1-meta_masks)
-        F_o = self.obj_encoder(O)
-        F_h = self.hm_encoder(H.mT)
+        upsample_o = self.obj_encoder(O)
+        F_o = self.obj_decoder(upsample_o, t_feat)  # [B, 1024, npoint_sa1]
+        upsample_h = self.hm_encoder(H)
+        F_h = self.hm_decoder(upsample_h, t_feat)  # [B, 1024, npoint_sa1]
 
         T_o_, T_h_, F_o_, F_h_, varphi = self.Intention(F_o.mT, F_h.mT)
         phi_a, phi_c = self.Geometry_Correlation(F_o_, F_h_, T_o_, T_h_)
@@ -358,6 +372,23 @@ class LEMON_laso(nn.Module):
         contact, affordance, spatial = self.decoder(phi_a, phi_c, phi_p)
 
         return contact, affordance, spatial, varphi
+
+    def forward_text(self, text_queries, device):
+        """
+        text_queries : list of question str 
+        out: text_embedding: bs, len, dim
+            mask: bs, len (bool) [1,1,1,1,0,0]
+        """
+        # tokenized_queries = self.tokenizer.batch_encode_plus(text_queries, padding='longest', return_tensors='pt')
+        tokenized_queries = self.tokenizer.batch_encode_plus(text_queries, padding='max_length', truncation=True,
+                                                            max_length=self.n_groups,
+                                                            return_tensors='pt')
+        tokenized_queries = tokenized_queries.to(device)
+        with torch.inference_mode(mode=self.freeze_text_encoder):
+            encoded_text = self.text_encoder(**tokenized_queries).last_hidden_state
+        # print(tokenized_queries.attention_mask.bool())
+
+        return self.text_resizer(encoded_text), tokenized_queries.attention_mask.bool()
 
 if __name__=='__main__':
     pass

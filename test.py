@@ -8,7 +8,7 @@ from tools.trainer import train
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 from dataset_utils.dataset_3DIR import _3DIR
-from lemon_3d.tools.models.model_LEMON_d_laso import LEMON
+from lemon_3d.tools.models.model_LEMON_laso import LEMON
 
 img_file = 'Data/txt_scripts/train.txt'
 obj_file = 'Data/txt_scripts/Point_train.txt'

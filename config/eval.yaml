@@ -5,4 +5,4 @@ behave: 'Data/Behave/behave.json'
 desc_file: 'Data/txt_scripts/human_object_desc.json'
 best_checkpoint: 'checkpoints/LEMON_D.pt'
 emb_dim: 768
-model: 'd'
+model: 'laso'

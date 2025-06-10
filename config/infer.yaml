@@ -10,4 +10,4 @@ affordance_result_folder: 'Outputs/Object/'
 spatial_result_folder: 'Outputs/Spatial/'
 emb_dim: 768
 infer_type: 'batch'
-model: 'd'
+model: 'laso'

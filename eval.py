@@ -8,7 +8,7 @@ import yaml
 import argparse
 from tools.models.model_LEMON_d import LEMON as LEMON_d
 from tools.models.model_LEMON_p import LEMON as LEMON_p
-from tools.models.model_LEMON_d_laso import LEMON as LEMON_laso
+from tools.models.model_LEMON_laso import LEMON as LEMON_laso
 from tools.models.LEMON_noCur import LEMON_wocur
 from dataset_utils.dataset_3DIR import _3DIR
 from sklearn.metrics import roc_auc_score

@@ -8,7 +8,7 @@ import torch.distributed as dist
 from tools.utils.build_layer import build_smplh_mesh, Pelvis_norm
 from tools.utils.evaluation import evaluate
 from tools.utils.loss import L_ca
-
+import itertools
 def train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model, logger, device, rank, model_type='d'):
 
     screen_logger = logging.getLogger("Model")
@@ -42,7 +42,7 @@ def train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model
         train_sampler.set_epoch(epoch)
         model = model.train()
         loss_sum = 0
-        for i, data_info in enumerate(train_loader):
+        for i, data_info in enumerate(itertools.islice(train_loader, 1)):
 
             optimizer.zero_grad()
             B = data_info['hm_curvature'].size(0)
