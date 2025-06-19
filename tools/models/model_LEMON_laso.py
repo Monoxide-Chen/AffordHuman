@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import pdb
 from einops import rearrange
+from tools.utils.attention import TransformerDecoder, TransformerDecoderLayer
 from tools.utils.mesh_sampler import get_sample
 from tools.models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from tools.models.hrnet.config import update_config as hrnet_update_config
@@ -121,34 +122,6 @@ class Transformer(nn.Module):
             x = attn(x, key_value) + x
             x = ff(x) + x
         return x
-        
-class Enc_I(nn.Module):
-    def __init__(self, run_type, hidden_dim):
-        super().__init__()
-
-        hrnet_yaml = 'tools/models/hrnet/config/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-        hrnet_update_config(hrnet_config, hrnet_yaml)
-        if run_type != 'infer':
-            hrnet_checkpoint = 'tools/models/hrnet/config/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
-            self.backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
-        else:
-            self.backbone = get_cls_net(hrnet_config, pretrained=None)
-        self.hidden_dim = hidden_dim
-        self.dim_down = nn.Sequential(
-            nn.Conv2d(2048, self.hidden_dim, 1),
-            nn.BatchNorm2d(self.hidden_dim),
-            nn.ReLU()
-        )
-        self.pooling = nn.AdaptiveAvgPool2d(output_size=(1,1))
-
-    def forward(self, img):
-        B = img.size(0)
-
-        out = self.backbone(img)
-        out = self.dim_down(out)
-        feats = out.view(B, self.hidden_dim, -1).permute(0, 2, 1)
-        semantic = self.pooling(out).view(B, -1)
-        return feats, semantic
 
 class Intention_Excavation(nn.Module):
     def __init__(self, input_dim, device):
@@ -192,8 +165,8 @@ class Curvature_guided_Geometric_Correlation(nn.Module):
             def forward(self, x):
                 return x.transpose(1, 2)
 
-        self.f_m1 = Cross_Attention(dim = input_dim, heads = 12, dropout = 0.3, dim_head = 64)
-        self.f_m2 = Cross_Attention(dim = input_dim, heads = 12, dropout = 0.3, dim_head = 64)
+        self.f_m1 = Cross_Attention(dim = input_dim, heads = 8, dropout = 0.3, dim_head = 64)
+        self.f_m2 = Cross_Attention(dim = input_dim, heads = 8, dropout = 0.3, dim_head = 64)
 
         self.fusion_hm = nn.Sequential(
             nn.Conv1d(input_dim*2, input_dim, 1),
@@ -208,20 +181,18 @@ class Curvature_guided_Geometric_Correlation(nn.Module):
             nn.LeakyReLU(negative_slope=0.1),
             SwapAxes(),
         )
-
-        self.affordance = Transformer(dim = input_dim, depth = 1, heads = 12, mlp_dim = 768, dropout = 0.3, dim_head = 64)
-        self.contact = Transformer(dim = input_dim, depth = 1, heads = 12, mlp_dim = 768, dropout = 0.3, dim_head = 64)
+        print(f'input_dim: {input_dim}')
+        self.affordance = Transformer(dim = input_dim, depth = 1, heads = 8, mlp_dim = 512, dropout = 0.3, dim_head = 64)
+        self.contact = Transformer(dim = input_dim, depth = 1, heads = 8, mlp_dim = 512, dropout = 0.3, dim_head = 64)
 
     def forward(self, F_o_, F_h_, T_o_, T_h_):
 
-
-        conditional_aff = torch.cat((T_o_.unsqueeze(dim=1), F_h_), dim=1)
+        # conditional_aff = torch.cat((T_o_.unsqueeze(dim=1), F_h_), dim=1)
         conditional_contact = torch.cat((T_h_.unsqueeze(dim=1), F_o_), dim=1)
-
-        phi_a = self.affordance(F_o_, conditional_aff)
+        # phi_a = self.affordance(F_o_, conditional_aff)
         phi_c = self.contact(F_h_, conditional_contact)
 
-        return phi_a, phi_c
+        return phi_c
 
 class Contact_aware_Spatial_Relation(nn.Module):
     def __init__(self, input_dim, mlp_dim):
@@ -229,12 +200,12 @@ class Contact_aware_Spatial_Relation(nn.Module):
 
         self.T_sp = nn.Embedding(3, input_dim)
         self.spatial_pse = nn.Parameter(torch.randn(1, 3+2, input_dim))
-        self.f_p = Cross_Attention(dim = input_dim, heads = 12, dropout = 0.3, dim_head = 64)
+        self.f_p = Cross_Attention(dim = input_dim, heads = 8, dropout = 0.3, dim_head = 64)
         self.proj = nn.Sequential(
-            nn.Linear(input_dim, input_dim//6),
-            nn.BatchNorm1d(input_dim//6),
+            nn.Linear(input_dim, input_dim//4),
+            nn.BatchNorm1d(input_dim//4),
             nn.LeakyReLU(negative_slope=0.1),
-            nn.Linear(input_dim // 6, input_dim//16),
+            nn.Linear(input_dim // 4, input_dim//16),
             nn.BatchNorm1d(input_dim//16),
             nn.LeakyReLU(negative_slope=0.1),
             nn.Linear(input_dim // 16, 3),
@@ -254,6 +225,22 @@ class Contact_aware_Spatial_Relation(nn.Module):
 
         return phi_p
 
+class Obj_Text_Decoder(nn.Module):
+    def __init__(self, emb_dim=512, n_groups=40, num_heads=4):
+        super().__init__()
+        self.emb_dim = emb_dim
+        self.n_groups = n_groups
+        self.pos1d = nn.Parameter(torch.zeros(1, self.n_groups, self.emb_dim))
+        decoder_layer = TransformerDecoderLayer(self.emb_dim, nheads=num_heads, dropout=0)
+        self.decoder = TransformerDecoder(decoder_layer, num_layers=1, norm=nn.LayerNorm(self.emb_dim))
+    def forward(self, F_o, t_feat, t_mask):
+        t_feat = self.decoder(t_feat, F_o.transpose(-2, -1), tgt_key_padding_mask=t_mask, query_pos=self.pos1d)
+        t_feat *= t_mask.unsqueeze(-1).float()
+        _3daffordance = torch.einsum('blc,bcn->bln', t_feat, F_o)
+        _3daffordance = _3daffordance.sum(1)/(t_mask.float().sum(1).unsqueeze(-1))
+        _3daffordance = torch.sigmoid(_3daffordance)
+        return _3daffordance.unsqueeze(-1)
+
 class Decoder(nn.Module):
     def __init__(self, feat_dim, device):
         super().__init__()
@@ -266,47 +253,47 @@ class Decoder(nn.Module):
         
         self.device = device
         self.aff_head = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim//6),
+            nn.Linear(feat_dim, feat_dim//4),
             SwapAxes(),
-            nn.BatchNorm1d(feat_dim//6),
+            nn.BatchNorm1d(feat_dim//4),
             SwapAxes(),
             nn.ReLU(),
-            nn.Linear(feat_dim//6, 1)
+            nn.Linear(feat_dim//4, 1)
         )
 
         self.contact_head = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim//6),
+            nn.Linear(feat_dim, feat_dim//4),
             SwapAxes(),
-            nn.BatchNorm1d(feat_dim//6),
+            nn.BatchNorm1d(feat_dim//4),
             SwapAxes(),
             nn.ReLU(),
-            nn.Linear(feat_dim//6, 1)
+            nn.Linear(feat_dim//4, 1)
         )
 
         self.spatial_head = nn.Sequential(
-            nn.Linear(feat_dim, feat_dim//6),
+            nn.Linear(feat_dim, feat_dim//4),
             SwapAxes(),
-            nn.BatchNorm1d(feat_dim//6),
+            nn.BatchNorm1d(feat_dim//4),
             SwapAxes(),
             nn.ReLU(),
-            nn.Linear(feat_dim//6, 1)
+            nn.Linear(feat_dim//4, 1)
         )
 
         self.contact_up_fine = nn.Linear(1723, 6890)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, phi_a, phi_c, phi_p):
+    def forward(self, phi_c, phi_p):
 
-        B = phi_a.size(0)
-        affordance = self.aff_head(phi_a)                                  
-        affordance = self.sigmoid(affordance)
+        # B = phi_a.size(0)
+        # affordance = self.aff_head(phi_a)                                  
+        # affordance = self.sigmoid(affordance)
 
         contact_coarse = self.contact_head(phi_c)
         contact_fine = self.contact_up_fine(contact_coarse.mT)              
 
         spatial = self.spatial_head(phi_p).squeeze(dim=-1)
 
-        return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], affordance, spatial
+        return [self.sigmoid(contact_coarse), self.sigmoid(contact_fine.mT)], spatial
 
 class LEMON(nn.Module):
     def __init__(self, feat_dim, run_type, device):
@@ -318,7 +305,7 @@ class LEMON(nn.Module):
             def forward(self, x):
                 return x.transpose(1, 2)
 
-        self.emb_dim = 512
+        self.emb_dim = feat_dim
         self.n_groups = 40
         self.device = device
         self.vertex_sampler = get_sample(device=self.device)
@@ -333,16 +320,16 @@ class LEMON(nn.Module):
         self.text_resizer = nn.Sequential(nn.Linear(self.text_encoder.config.hidden_size, self.emb_dim, bias=True),
                             nn.LayerNorm(self.emb_dim, eps=1e-12))
         self.obj_encoder = Pts_Encoder()
-        self.obj_decoder = Pts_Decoder_with_gpb(self.emb_dim, self.n_groups)
+        self.obj_decoder = Pts_Decoder_with_gpb(emb_dim=self.emb_dim, n_groups=self.n_groups)
         self.hm_encoder = Pts_Encoder()
-        self.hm_decoder = Pts_Decoder_with_gpb(self.emb_dim, self.n_groups)
+        self.hm_decoder = Pts_Decoder_with_gpb(emb_dim=self.emb_dim, n_groups=self.n_groups)
 
         self.Intention = Intention_Excavation(feat_dim, device)
         self.Geometry_Correlation = Curvature_guided_Geometric_Correlation(feat_dim)
         self.Spatial = Contact_aware_Spatial_Relation(feat_dim, feat_dim)
 
         self.decoder = Decoder(feat_dim, device=self.device)
-
+        self.affordance_decoder = Obj_Text_Decoder(emb_dim=self.emb_dim, n_groups=self.n_groups)
     def forward(self, O, H, text_desc=None, meta_masks=None):
         """Forward pass.
 
@@ -353,23 +340,24 @@ class LEMON(nn.Module):
                 sample. This input is currently unused.
             meta_masks (Tensor, optional): Optional mask for the human mesh.
         """
-
+        
         B = O.size(0)
-        t_feat, t_mask = self.forward_text(list(text_desc), O.device)  # [batch, q_len, d_model]
+        t_feat, t_mask = self.forward_text(text_desc, O.device)  # [batch, q_len, d_model]
         H = self.vertex_sampler.downsample(H, n1=0, n2=1)
         if meta_masks != None:
             constant_tensor = torch.ones_like(H).to(self.device)*0.01
             H = H*meta_masks + constant_tensor*(1-meta_masks)
+        
         upsample_o = self.obj_encoder(O)
+        upsample_h = self.hm_encoder(H.mT)
         F_o = self.obj_decoder(upsample_o, t_feat)  # [B, 1024, npoint_sa1]
-        upsample_h = self.hm_encoder(H)
         F_h = self.hm_decoder(upsample_h, t_feat)  # [B, 1024, npoint_sa1]
-
+        affordance = self.affordance_decoder(F_o, t_feat, t_mask)  # [B, n_groups]
         T_o_, T_h_, F_o_, F_h_, varphi = self.Intention(F_o.mT, F_h.mT)
-        phi_a, phi_c = self.Geometry_Correlation(F_o_, F_h_, T_o_, T_h_)
+        phi_c = self.Geometry_Correlation(F_o_, F_h_, T_o_, T_h_)
         phi_p = self.Spatial(F_o_, F_h_, phi_c, T_o_, T_h_)
-
-        contact, affordance, spatial = self.decoder(phi_a, phi_c, phi_p)
+        
+        contact, spatial = self.decoder(phi_c, phi_p)
 
         return contact, affordance, spatial, varphi
 
@@ -386,7 +374,6 @@ class LEMON(nn.Module):
         tokenized_queries = tokenized_queries.to(device)
         with torch.inference_mode(mode=self.freeze_text_encoder):
             encoded_text = self.text_encoder(**tokenized_queries).last_hidden_state
-        # print(tokenized_queries.attention_mask.bool())
 
         return self.text_resizer(encoded_text), tokenized_queries.attention_mask.bool()
 

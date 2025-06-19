@@ -7,12 +7,12 @@ behave: 'Data/Behave/behave.json'
 desc_file: 'Data/txt_scripts/human_object_desc.json'
 lr_rate: 0.0001
 decay_rate: 0.001
-Epoch: 1
-emb_dim: 768
+Epoch: 80
+emb_dim: 512
 pairing_num: 1
 run_type: 'train'
 w1: 40.0
 w2: 40.0
-w3: 20.0
-w4: 20.0
+w3: 0
+w4: 0
 model: 'laso'

@@ -8,6 +8,9 @@ cd /home/yiyang/AffordHuman
 date
 source activate lemon
 # python eval.py --yaml config/eval.yaml
-CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 train.py --save_checkpoint_path runs/test/ \
+# CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 train.py --save_checkpoint_path runs/test/ \
+#     --batch_size 16 --yaml config/train.yaml
+
+CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 train.py --save_checkpoint_path runs/no_cur/ \
     --batch_size 12 --yaml config/train.yaml
 # CUDA_VISIBLE_DEVICES=0 python inference.py

@@ -42,7 +42,7 @@ def train(opt, dict, train_loader, train_sampler, val_loader, val_dataset, model
         train_sampler.set_epoch(epoch)
         model = model.train()
         loss_sum = 0
-        for i, data_info in enumerate(itertools.islice(train_loader, 1)):
+        for i, data_info in enumerate(train_loader):
 
             optimizer.zero_grad()
             B = data_info['hm_curvature'].size(0)

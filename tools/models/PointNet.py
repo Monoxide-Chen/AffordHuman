@@ -49,21 +49,19 @@ class Pts_Decoder_with_gpb(nn.Module):
         self.fp2 = PointNetFeaturePropagation(in_channel=832, mlp=[768, 512]) 
         self.fp1 = PointNetFeaturePropagation(in_channel=518+self.additional_channel, mlp=[512, 512]) 
         
-        self.gpb = GPBlock(emb_dim, num_group_token=n_groups, lan_dim=emb_dim)
+        self.gpb = GPBlock(embed_dims=512, num_group_token=n_groups, lan_dim=512)
 
     def forward(self, F_p_wise, t_feat):
 
         p_0, p_1, p_2, p_3 = F_p_wise
-
-        # p_3[1] = self.gpb(t_feat, p_3[1].transpose(-2, -1)).transpose(-2, -1)
-        
+        p_3[1] = self.gpb(t_feat, p_3[1].transpose(-2, -1)).transpose(-2, -1)
         up_sample = self.fp3(p_2[0], p_3[0], p_2[1], p_3[1])   #[B, emb_dim, npoint_sa2]
         
-        # up_sample = self.gpb(t_feat, up_sample.transpose(-2, -1)).transpose(-2, -1)
+        up_sample = self.gpb(t_feat, up_sample.transpose(-2, -1)).transpose(-2, -1)
         up_sample = self.fp2(p_1[0], p_2[0], p_1[1], up_sample)    #[B, emb_dim, npoint_sa1]   
         
-        # up_sample = self.gpb(t_feat, up_sample.transpose(-2, -1)).transpose(-2, -1)         
-        up_sample = self.fp1(p_0[0], p_1[0], torch.cat([p_0[0], p_0[1]],1), up_sample)  #[B, emb_dim, N]         
+        up_sample = self.gpb(t_feat, up_sample.transpose(-2, -1)).transpose(-2, -1)         
+        up_sample = self.fp1(p_0[0], p_1[0], torch.cat([p_0[0], p_0[1]],1), up_sample)  #[B, emb_dim, N]     
 
         return up_sample
     

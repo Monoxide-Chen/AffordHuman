@@ -8,6 +8,6 @@ run_type: 'infer'
 contact_result_folder: 'Outputs/Human/'
 affordance_result_folder: 'Outputs/Object/'
 spatial_result_folder: 'Outputs/Spatial/'
-emb_dim: 768
+emb_dim: 512
 infer_type: 'batch'
 model: 'laso'
